@@ -49,7 +49,7 @@ def get_clustering_data():
     Retrieves all toy datasets from sklearn
     :return: circles, moons, blobs datasets.
     """
-    n_samples = 1500
+    n_samples = 500
     noisy_circles = make_circles(n_samples=n_samples, factor=.5,
                                  noise=0.05)
     noisy_moons = make_moons(n_samples=n_samples, noise=0.05)
@@ -497,7 +497,7 @@ def plot_mst(vertices, mst, intermediate=False, plot_cluster=False, num_clusters
     # ax.view_init(azim=45, elev=0)
     # ax.view_init(azim=22.5, elev=0)
     # ax.view_init(azim=67.5, elev=0)
-    ax.view_init(azim=75, elev=10)
+    ax.view_init(azim=75, elev=0)
     plt.show()
 
     return
