@@ -496,8 +496,8 @@ def plot_mst(vertices, mst, intermediate=False, plot_cluster=False, num_clusters
     # ax.view_init(azim=90, elev=0)
     # ax.view_init(azim=45, elev=0)
     # ax.view_init(azim=22.5, elev=0)
-    ax.view_init(azim=67.5, elev=0)
-    ax.view_init(azim=75, elev=0)
+    # ax.view_init(azim=67.5, elev=0)
+    ax.view_init(azim=75, elev=10)
     plt.show()
 
     return
