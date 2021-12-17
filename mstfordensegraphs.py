@@ -6,15 +6,9 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 import scipy.spatial
-import sklearn
 
-from sklearn import cluster, datasets, mixture
 from sklearn.datasets import make_circles, make_moons, make_blobs
-from sklearn.neighbors import kneighbors_graph
-from sklearn.preprocessing import StandardScaler
-from itertools import cycle, islice
 
-from pyspark import RDD, SparkConf, SparkContext
 # Snap stanford
 
 def get_clustering_data():

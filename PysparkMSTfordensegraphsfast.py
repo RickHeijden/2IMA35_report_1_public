@@ -1,6 +1,5 @@
 import math
 import csv
-import numpy as np
 import random
 import scipy.spatial
 
@@ -10,56 +9,75 @@ from sklearn.datasets import make_circles, make_moons, make_blobs, make_swiss_ro
 from pyspark import SparkConf, SparkContext
 
 from Plotter import *
+from DataReader import *
 
 
-def read_data_set_from_txtfile(file_location, edge_weights=False):
+def get_edge_weight(num_clusters=5, sigma=1, mu=None):
+    if mu is None:
+        mu = [5, 10, 15, 20, 25]
+    edge_cluster = np.ceil(random.uniform(0, num_clusters))
+    return np.random.normal(mu[edge_cluster], sigma)
+
+
+def read_data_set_from_txtfile(file_location, edge_weights=False, distribution='zipf'):
     edges = {}
     vertices = set()
     size = 0
-    file = open(file_location)
+    with open(file_location) as file:
+    # file = open(file_location)
     # line_count = 0
-    for row in file:
-        stripped_row = row.strip()
-        splitted_row = stripped_row.split("\t")
-        vertex1 = int(splitted_row[0])
-        vertex2 = int(splitted_row[1])
-        vertices.add(vertex1)
-        vertices.add(vertex2)
-        if edge_weights:
-            if vertex1 < vertex2:
-                if vertex1 in edges:
-                    edges[vertex1][vertex2] = float(splitted_row[2])
-                    size += 1
-                else:
-                    edges[vertex1] = {vertex2: float(splitted_row[2])}
-                    size += 1
-            else:
-                if vertex2 in edges:
-                    edges[vertex2][vertex1] = float(splitted_row[2])
-                    size += 1
-                else:
-                    edges[vertex2] = {vertex1: float(splitted_row[2])}
-                    size += 1
-        else:
-            if vertex1 < vertex2:
-                if vertex1 in edges:
-                    if vertex2 not in edges[vertex1]:
-                        edges[vertex1][vertex2] = random.uniform(0, 1)
+        for row in file:
+            if row.startswith("#"):
+                continue
+            stripped_row = row.strip()
+            # splitted_row = stripped_row.split("\t")
+            splitted_row = stripped_row.split(' ')
+            vertex1 = int(splitted_row[0])
+            vertex2 = int(splitted_row[1])
+            vertices.add(vertex1)
+            vertices.add(vertex2)
+            if edge_weights:
+                if vertex1 < vertex2:
+                    if vertex1 in edges:
+                        edges[vertex1][vertex2] = float(splitted_row[2])
+                        size += 1
+                    else:
+                        edges[vertex1] = {vertex2: float(splitted_row[2])}
                         size += 1
                 else:
-                    edges[vertex1] = {vertex2: random.uniform(0, 1)}
-                    size += 1
+                    if vertex2 in edges:
+                        edges[vertex2][vertex1] = float(splitted_row[2])
+                        size += 1
+                    else:
+                        edges[vertex2] = {vertex1: float(splitted_row[2])}
+                        size += 1
             else:
-                if vertex2 in edges:
-                    if vertex1 not in edges[vertex2]:
-                        edges[vertex2][vertex1] = random.uniform(0, 1)
+                if distribution == 'Gaussian':
+                    edge_weight = get_edge_weight()
+                elif distribution == 'zipf':
+                    edge_weight = np.random.zipf(2)
+                else:
+                    edge_weight = random.uniform(0, 1)
+                if vertex1 < vertex2:
+                    if vertex1 in edges:
+                        if vertex2 not in edges[vertex1]:
+                            edges[vertex1][vertex2] = edge_weight
+                            size += 1
+                    else:
+                        edges[vertex1] = {vertex2: edge_weight}
                         size += 1
                 else:
-                    edges[vertex2] = {vertex1: random.uniform(0, 1)}
-                    size += 1
+                    if vertex2 in edges:
+                        if vertex1 not in edges[vertex2]:
+                            edges[vertex2][vertex1] = edge_weight
+                            size += 1
+                    else:
+                        edges[vertex2] = {vertex1: edge_weight}
+                        size += 1
     vertex_list = []
     for vertex in vertices:
         vertex_list.append(vertex)
+    file.close()
     return vertex_list, size, edges
 
 
@@ -100,7 +118,7 @@ def get_clustering_data():
     Retrieves all toy datasets from sklearn
     :return: circles, moons, blobs datasets.
     """
-    n_samples = 500
+    n_samples = 1500
     noisy_circles = make_circles(n_samples=n_samples, factor=.5,
                                  noise=0.05)
     noisy_moons = make_moons(n_samples=n_samples, noise=0.05)
@@ -324,6 +342,7 @@ def reduce_edges(vertices, E, c, epsilon):
 
     n = len(vertices)
     k = math.ceil(n ** ((c - epsilon) / 2))
+    print("k: ", k)
     U, V = partion_vertices(vertices, k)
 
     rddUV = sc.parallelize(U).cartesian(sc.parallelize(V)).map(lambda x: get_edges(x[0], x[1], E)).map(
@@ -354,28 +373,30 @@ def remove_edges(E, removed_edges):
     return E
 
 
-def create_mst(V, E, epsilon, size, vertex_coordinates, plot_itermediate=False, dataset_name="", plotter=None):
+def create_mst(V, E, epsilon, size, vertex_coordinates, plot_intermediate=False, plotter=None):
     """
     Creates the mst of the graph G = (V, E).
     As long as the number of edges is greater than n ^(1 + epsilon), the number of edges is reduced
     Then the edges that needs to be removed are removed from E and the size is updated.
+    :param plotter: class to plot graphs
     :param V: Vertices
     :param E: edges
     :param epsilon:
     :param size: number of edges
-    :param plot_itermediate: boolean to indicate if intermediate steps should be plotted
+    :param plot_intermediate: boolean to indicate if intermediate steps should be plotted
     :param vertex_coordinates: coordinates of vertices
     :return: returns the reduced graph with at most np.power(n, 1 + epsilon) edges
     """
     n = len(V)
     c = math.log(size / n, n)
+    print("C", c)
     total_runs = 0
     while size > np.power(n, 1 + epsilon):
         total_runs += 1
-        plotter.next_round()
-        print('C: ', c)
+        if plotter is not None:
+            plotter.next_round()
         mst, removed_edges = reduce_edges(V, E, c, epsilon)
-        if plot_itermediate:
+        if plot_intermediate and plotter is not None:
             if len(vertex_coordinates[0]) > 2:
                 plotter.plot_mst_3d(mst, intermediate=True, plot_cluster=False, plot_num_machines=1)
             else:
@@ -424,8 +445,9 @@ def main():
     time = []
     file_location = 'Results/test/'
     plotter = Plotter(None, None, file_location)
+    data_reader = DataReader()
     for dataset in datasets:
-        if cnt > 2:
+        if cnt < 10:
             cnt += 1
             continue
         timestamp = datetime.now()
@@ -441,7 +463,7 @@ def main():
         print('Start creating MST...')
         timestamp = datetime.now()
         mst = create_mst(V, E, epsilon=args.epsilon, size=size, vertex_coordinates=vertex_coordinates,
-                         plot_itermediate=True, dataset_name=names_datasets[cnt], plotter=plotter)
+                         plot_intermediate=True, plotter=plotter)
         print('Found MST in: ', datetime.now() - timestamp)
         time.append(datetime.now() - timestamp)
         print('Start creating plot of MST...')
@@ -454,18 +476,34 @@ def main():
         cnt += 1
 
     # Read form file location
+    # loc_array = ['datasets/Brightkite_edges.txt', 'datasets/CA-AstroPh.txt', 'datasets/com-amazon.ungraph.txt',
+    # 'datasets/facebook_combined.txt'
+    # ]
     # loc = 'datasets/Brightkite_edges.txt'
-    # print('Read dataset: ', loc)
-    # timestamp = datetime.now()
-    # V, size, E = read_data_set_from_txtfile(loc)
-    # print('Time to read dataset: ', datetime.now() - timestamp)
-    # print('Size dataset: ', size)
-    # timestamp = datetime.now()
-    # mst = create_mst(V, E, epsilon=args.epsilon, size=size, vertex_coordinates=None, plot_itermediate=False)
-    # print('Found MST in: ', datetime.now() - timestamp)
-    # print('Done...')
-    # for t in time:
-    #     print('Dataset generation took:', t)
+    # loc = 'datasets/CA-AstroPh.txt'
+    loc = 'datasets/facebook_combined.txt'
+    # loc = 'datasets/polygons/rvisp24116.instance.json'
+    print('Read dataset: ', loc)
+    timestamp = datetime.now()
+    # V, size, E, vertex_coordinates = data_reader.read_json(loc)
+    V, size, E = read_data_set_from_txtfile(loc)
+    print('Time to read dataset: ', datetime.now() - timestamp)
+    print('Size dataset: ', size)
+    timestamp = datetime.now()
+
+    mst = create_mst(V, E, epsilon=args.epsilon, size=size, vertex_coordinates=None, plot_intermediate=False)
+
+    plotter.plot_without_coordinates(mst)
+    # plotter.set_vertex_coordinates(vertex_coordinates)
+    # plotter.set_dataset('rvisp24116')
+    # plotter.update_string()
+    # plotter.plot_mst_2d(mst)
+
+    print(len(mst), len(V))
+    print('Found MST in: ', datetime.now() - timestamp)
+    print('Done...')
+    for t in time:
+        print('Dataset generation took:', t)
 
 
 if __name__ == '__main__':

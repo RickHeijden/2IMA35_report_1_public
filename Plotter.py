@@ -1,5 +1,5 @@
 import matplotlib.pyplot as plt
-
+import networkx as nx
 
 def get_key(item):
     """
@@ -25,15 +25,17 @@ def create_clusters(clusters, dict_edges):
         todo = []
         for j in range(clusters[i][0]):
             if j in dict_edges:
-                if clusters[i][0] in dict_edges[j]:
+                if clusters[i][0] in dict_edges[j] and j not in clusters[i]:
                     clusters[i].append(j)
                     todo.append(j)
         if clusters[i][0] in dict_edges:
-            for j in range(len(dict_edges[clusters[i][0]])):
-                todo.append(dict_edges[clusters[i][0]][j])
-                clusters[i].append(dict_edges[clusters[i][0]][j])
+            for key in dict_edges[clusters[i][0]]:
+                todo.append(key)
+                clusters[i].append(key)
 
         while len(todo) > 0:
+            if len(todo) % 1000 == 0:
+                print(len(todo))
             first = todo.pop()
             for k in range(first):
                 if k in dict_edges:
@@ -41,10 +43,10 @@ def create_clusters(clusters, dict_edges):
                         clusters[i].append(k)
                         todo.append(k)
             if first in dict_edges:
-                for k in range(len(dict_edges[first])):
-                    if dict_edges[first][k] not in clusters[i]:
-                        clusters[i].append(dict_edges[first][k])
-                        todo.append(dict_edges[first][k])
+                for key in dict_edges[first]:
+                    if key not in clusters[i]:
+                        clusters[i].append(key)
+                        todo.append(key)
         i += 1
     for i in range(len(clusters)):
         clusters[i] = sorted(clusters[i])
@@ -295,3 +297,19 @@ class Plotter:
             filename = self.file_loc + self.name_dataset + '_final'
             plt.savefig(filename, dpi='figure')
             plt.clf()
+
+    def plot_without_coordinates(self, mst, cluster=None):
+        G = nx.Graph()
+        if not cluster is None:
+            cluster_mst = []
+            for edge in mst:
+                if edge[0] in cluster:
+                    cluster_mst.append(edge)
+            for edge in cluster_mst:
+                G.add_edge(edge[0], edge[1])
+        else:
+            for edge in mst:
+                G.add_edge(edge[0], edge[1])
+        pos = nx.spring_layout(G)
+        nx.draw(G, node_size=1, pos=pos)
+        plt.show()

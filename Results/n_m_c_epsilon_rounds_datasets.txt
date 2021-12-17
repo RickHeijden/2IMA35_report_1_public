@@ -1,0 +1,71 @@
+### SKlearn datasets ###
+
+---
+n = 1500 and m = 2 250 000
+C = 0.905129,  
+epsilon = 1/8 = 0.125, 
+#rounds = 2, 
+---
+
+### Polygon datasets ###
+
+---
+rvisp3499.instance.json
+n = 207 and m = 3499
+C = 0.530220
+epsilon = 0.125
+# rounds = 1
+
+n = 207 and m = 3499
+C = 0.530220
+epsilon = 0.1
+# rounds = 2
+---
+visp73369.instance.json
+n = 529 and m = 73369
+C = 0.786522
+epsilon = 0.125
+# rounds = 2
+
+visp73369.instance.json
+n = 529 and m = 73369
+C = 0.786522
+epsilon = 0.1
+# rounds = 2
+---
+rvisp24116.instance.json
+n = 497 and m = 24116
+C = 0.625269
+epsilon = 0.125
+# rounds = 2
+
+n = 497 and m = 24116
+C = 0.625269
+epsilon = 0.1
+# rounds = 2
+
+### Real world datasets ###
+
+---
+Astro Physics collaboration network https://snap.stanford.edu/data/ca-AstroPh.html
+n = 18772 and m = 198110
+C = 0.239474
+epsilon = 0.125
+# rounds = 1
+
+n = 18772 and m = 198110
+C = 0.239474
+epsilon = 0.1
+# rounds = 1
+---
+Social circles: Facebook https://snap.stanford.edu/data/egonets-Facebook.html
+n = 4039 and m = 88234
+C = 0.371398
+epsilon = 0.125
+# round = 1
+
+n = 4039 and m = 88234
+C = 0.371398
+epsilon = 0.1
+# round = 2
+---
