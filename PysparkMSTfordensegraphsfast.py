@@ -12,107 +12,6 @@ from Plotter import *
 from DataReader import *
 
 
-def get_edge_weight(num_clusters=5, sigma=1, mu=None):
-    if mu is None:
-        mu = [5, 10, 15, 20, 25]
-    edge_cluster = np.ceil(random.uniform(0, num_clusters))
-    return np.random.normal(mu[edge_cluster], sigma)
-
-
-def read_data_set_from_txtfile(file_location, edge_weights=False, distribution='zipf'):
-    edges = {}
-    vertices = set()
-    size = 0
-    with open(file_location) as file:
-    # file = open(file_location)
-    # line_count = 0
-        for row in file:
-            if row.startswith("#"):
-                continue
-            stripped_row = row.strip()
-            # splitted_row = stripped_row.split("\t")
-            splitted_row = stripped_row.split(' ')
-            vertex1 = int(splitted_row[0])
-            vertex2 = int(splitted_row[1])
-            vertices.add(vertex1)
-            vertices.add(vertex2)
-            if edge_weights:
-                if vertex1 < vertex2:
-                    if vertex1 in edges:
-                        edges[vertex1][vertex2] = float(splitted_row[2])
-                        size += 1
-                    else:
-                        edges[vertex1] = {vertex2: float(splitted_row[2])}
-                        size += 1
-                else:
-                    if vertex2 in edges:
-                        edges[vertex2][vertex1] = float(splitted_row[2])
-                        size += 1
-                    else:
-                        edges[vertex2] = {vertex1: float(splitted_row[2])}
-                        size += 1
-            else:
-                if distribution == 'Gaussian':
-                    edge_weight = get_edge_weight()
-                elif distribution == 'zipf':
-                    edge_weight = np.random.zipf(2)
-                else:
-                    edge_weight = random.uniform(0, 1)
-                if vertex1 < vertex2:
-                    if vertex1 in edges:
-                        if vertex2 not in edges[vertex1]:
-                            edges[vertex1][vertex2] = edge_weight
-                            size += 1
-                    else:
-                        edges[vertex1] = {vertex2: edge_weight}
-                        size += 1
-                else:
-                    if vertex2 in edges:
-                        if vertex1 not in edges[vertex2]:
-                            edges[vertex2][vertex1] = edge_weight
-                            size += 1
-                    else:
-                        edges[vertex2] = {vertex1: edge_weight}
-                        size += 1
-    vertex_list = []
-    for vertex in vertices:
-        vertex_list.append(vertex)
-    file.close()
-    return vertex_list, size, edges
-
-
-def read_data_set_from_csvfile(file_location):
-    edges = {}
-    vertices = set()
-    size = 0
-    with open(file_location) as csv_file:
-        csv_reader = csv.reader(csv_file, delimiter=',')
-        # line_count = 0
-        for row in csv_reader:
-            vertex1 = row[0]
-            vertex2 = row[1]
-            vertices.add(vertex1)
-            vertices.add(vertex2)
-            if vertex1 < vertex2:
-                if vertex1 in edges:
-                    edges[vertex1][vertex2] = row[2]
-                    size += 1
-                else:
-                    edges[vertex1] = {vertex2: row[2]}
-                    size += 1
-            else:
-                if vertex2 in edges:
-                    edges[vertex2][vertex1] = row[2]
-                    size += 1
-                else:
-                    edges[vertex2] = {vertex1: row[2]}
-                    size += 1
-    vertex_list = []
-    for vertex in vertices:
-        vertex_list.append(vertex)
-    return vertex_list, size, edges
-
-
 def get_clustering_data():
     """
     Retrieves all toy datasets from sklearn
@@ -161,7 +60,6 @@ def get_clustering_data():
 
     return datasets
 
-
 def create_distance_matrix(dataset):
     """
     Creates the distance matrix for a dataset with only vertices. Also adds the edges to a dict.
@@ -198,6 +96,7 @@ def create_distance_matrix(dataset):
                     dict2[j] = d_matrix[i][j]
             dict[i] = dict2
     return dict, size, vertices
+
 
 
 def partion_vertices(vertices, k):
@@ -239,7 +138,7 @@ def find_mst(U, V, E):
     :param V: vertices V
     :param E: edges of the graph
     :return: the mst and edges not in the mst of the graph
-    """
+     """
     vertices = set()
     for v in V:
         vertices.add(v)
@@ -447,7 +346,7 @@ def main():
     plotter = Plotter(None, None, file_location)
     data_reader = DataReader()
     for dataset in datasets:
-        if cnt < 10:
+        if cnt < 0:
             cnt += 1
             continue
         timestamp = datetime.now()
@@ -480,20 +379,40 @@ def main():
     # 'datasets/facebook_combined.txt'
     # ]
     # loc = 'datasets/Brightkite_edges.txt'
-    # loc = 'datasets/CA-AstroPh.txt'
-    loc = 'datasets/facebook_combined.txt'
+    loc = 'datasets/CA-AstroPh.txt'
+    # loc = 'datasets/facebook_combined.txt'
     # loc = 'datasets/polygons/rvisp24116.instance.json'
     print('Read dataset: ', loc)
     timestamp = datetime.now()
     # V, size, E, vertex_coordinates = data_reader.read_json(loc)
-    V, size, E = read_data_set_from_txtfile(loc)
+    V, size, E = data_reader.read_data_set_from_txtfile(loc)
     print('Time to read dataset: ', datetime.now() - timestamp)
     print('Size dataset: ', size)
     timestamp = datetime.now()
 
     mst = create_mst(V, E, epsilon=args.epsilon, size=size, vertex_coordinates=None, plot_intermediate=False)
+    c = [[121399]]
 
-    plotter.plot_without_coordinates(mst)
+    cnt = 0
+    dict_edges = dict()
+    for edge in mst:
+        if edge[0] in dict_edges:
+            dict_edges[edge[0]][edge[1]] = edge[2]
+        else:
+            dict_edges[edge[0]] = {edge[1]: edge[2]}
+
+    while len(c[0]) < 1000:
+        number = mst[cnt][0]
+        cnt += 1
+        c = create_clusters([[number]], dict_edges)
+        print(len(c[0]))
+
+    new_mst = []
+    for edge in mst:
+        if edge[0] in c[0]:
+            new_mst.append(edge)
+
+    plotter.plot_without_coordinates(new_mst)
     # plotter.set_vertex_coordinates(vertex_coordinates)
     # plotter.set_dataset('rvisp24116')
     # plotter.update_string()

@@ -313,3 +313,23 @@ class Plotter:
         pos = nx.spring_layout(G)
         nx.draw(G, node_size=1, pos=pos)
         plt.show()
+
+
+    def plot_yhats(self, yhats, vertex_coordinates):
+        x = []
+        y = []
+        n = len(vertex_coordinates)
+        c = ['k'] * n
+        area = [0.1] * n
+        for x_c, y_c in vertex_coordinates:
+            x.append(float(x_c))
+            y.append(float(y_c))
+
+        for yhat in yhats:
+            plt.scatter(x, y, c=c, s=area)
+            for i in range(n):
+                linex = [x[i], x[yhat[i]]]
+                liney = [y[i], y[yhat[i]]]
+                plt.plot(linex, liney, self.colors[i % len(self.colors)])
+
+            plt.show()
