@@ -182,3 +182,11 @@ class DataReader:
                             dict2[j] = d_matrix[i][j]
                     dict[i] = dict2
         return dict, size, vertices, max_weight
+
+    def read_vertex_list(self, file_location):
+        vertices = []
+        with open(file_location) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            for row in csv_reader:
+                vertices.append((float(row[0]), float(row[1])))
+        return vertices, len(vertices)

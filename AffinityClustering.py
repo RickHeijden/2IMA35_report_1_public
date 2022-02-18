@@ -8,6 +8,7 @@ from argparse import ArgumentParser
 
 from Plotter import *
 from DataReader import *
+from DataModifier import *
 
 
 def get_clustering_data():
@@ -111,13 +112,6 @@ def find_leader(_lambda):
         cnt = 0
         while v not in S:
             S.append(v)
-            if v is None:
-                print(u, nu)
-                print('cnt: ', cnt)
-                print('prev', prev)
-                print('lambda', _lambda[prev])
-                print('lambda', _lambda)
-                quit()
             prev = v
             v = _lambda[v]
             cnt += 1
@@ -137,6 +131,7 @@ def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters
 
     i = 0
     imax = 20
+    contracted_leader = [None] * len(adj)
     while i < imax:
         if len(graph) <= num_clusters:
             break
@@ -167,13 +162,22 @@ def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters
                 yhat[v] = c
         yhats.append(yhat)
 
+        for j in range(len(adj)):
+            if contracted_leader[j] is None:
+                if yhat[j] != j:
+                    contracted_leader[j] = yhat[j]
+
         # Contraction
         rdd = (rdd.map(map_contract_graph(_lambda=_lambda, leader=leader))
                .foldByKey([], reduce_contract_graph(leader)))
         graph = rdd.collect()
         i += 1
 
-    return i, graph, yhats
+    for j in range(len(adj)):
+        if contracted_leader[j] is None:
+            contracted_leader[j] = yhat[j]
+
+    return i, graph, yhats, contracted_leader
 
 
 def get_nearest_neighbours(V, k=5, leaf_size=2, buckets=False):
@@ -228,33 +232,38 @@ def create_buckets(E, alpha, beta, W):
         else:
             buckets.append((prev_end, W + 0.00001))
 
+    bucket_counter = [0] * len(buckets)
+
     for key in E:
         for edge in E[key]:
             bucket_number = 1
             for bucket in buckets:
                 if bucket[0] <= E[key][edge] < bucket[1]:
                     E[key][edge] = bucket_number
+                    bucket_counter[bucket_number - 1] += 1
                     break
                 bucket_number += 1
-    return E, buckets
+    return E, buckets, bucket_counter
 
 
-def shift_edge_weights(E, gamma=0.01):
+def shift_edge_weights(E, gamma=0.05):
     max_weight = 0
     for key in E:
         for edge in E[key]:
-            # TODO: fix shift (remove np.random.uniform(0, 100) +)
-            E[key][edge] = np.random.uniform(0, 100) + max(E[key][edge] * np.random.uniform(-gamma, gamma), 0)
+            # TODO: fix shift (remove 100 *)
+            E[key][edge] = 100 * max(E[key][edge] + (np.random.uniform(-gamma, gamma)) * E[key][edge], 0)
             max_weight = max(E[key][edge], max_weight)
     return E, max_weight
 
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--test', help='Used for smaller dataset and testing', action='store_true')
     parser.add_argument('--epsilon', help='epsilon [default=1/8]', type=float, default=1 / 8)
     parser.add_argument('--machines', help='Number of machines [default=1]', type=int, default=1)
-    parser.add_argument('--buckets', help='Use buckets [default=False]', type=bool, default=False)
+    parser.add_argument('--buckets', help='Use buckets [default=False]', action='store_true')
+    parser.add_argument('--getdata', help='save data to file', action='store_true')
+    parser.add_argument('--datasets', help='use sklearn datasets', action='store_true')
+    parser.add_argument('--test', help='Test', action='store_true')
     args = parser.parse_args()
 
     print('Start generating MST')
@@ -269,36 +278,92 @@ def main():
 
     # Read data
     data_reader = DataReader()
-    loc = 'datasets/CA-AstroPh.txt'
-    V, size, E = data_reader.read_data_set_from_txtfile(loc)
+    loc = 'datasets/sklearn/data_two_circles.csv'
+    #V, size, E = data_reader.read_data_set_from_txtfile(loc)
+    V, size = data_reader.read_vertex_list(loc)
     print('Read dataset: ', loc)
+
+    # Parameters
+    beta = 0.5  # 0 <= beta <= 1 (buckets)
+    alpha = 0.1  # shift of buckets
+    gamma = 0.05  # shift of edge weights
+
+    add_noise = True
+    if add_noise:
+        dm = DataModifier()
+        # V, size = dm.add_gaussian_noise(V)
+        V, size = dm.add_clustered_noise(V, 'vertical_line')
+
+
+    if args.test:
+        E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
+        for i in range(10):
+            E_copy = deepcopy(E)
+            E_changed, W = shift_edge_weights(E_copy, gamma)
+            E_changed, buckets, counter = create_buckets(E_changed, alpha, beta, W)
+            print('Run', i)
+            print('Buckets: ', buckets)
+            print('Counter: ', counter)
+        quit()
+
+    runs, graph, yhats, contracted_leader = run(V, size - 1, data_reader, beta, alpha, gamma, buckets=args.buckets)
+    plotter.plot_cluster(yhats[runs - 1], contracted_leader, V)
+    # plotter.plot_yhats([contracted_leader], V)
+    print('Graph size: ', len(graph), graph)
+    print('Runs: ', runs)
+    print('yhats: ', yhats[runs - 1])
+    quit()
+
+    # runs1, graph1, yhats1, contracted_leader = run(V, 1499, data_reader, beta, alpha, gamma, buckets=args.buckets)
+    # print('Graph size: ', len(graph1), graph1)
+    # print('Runs: ', runs1)
+    # print('yhats: ', yhats1[runs1 - 1])
+    #
+    # print(runs, runs1)
+    # difference = []
+    # for i in range(min(runs1, runs)):
+    #     diff = 0
+    #     for j in range(len(yhats1[i])):
+    #         if yhats1[i][j] != yhats[i][j]:
+    #             diff += 1
+    #     difference.append(diff)
+    # print(difference)
+
+    # plotter.plot_yhats(yhats, V)
 
     # Toy datasets
     datasets = get_clustering_data()
-
     timestamp = datetime.now()
     for dataset in datasets:
+        if not args.datasets:
+            continue
         k = 1499
-        if args.buckets:
-            beta = 0.5  # 0 <= beta <= 1 (buckets)
-            alpha = 0.1  # shift of buckets
-            gamma = 0.001  # shift of edge weights
+        if args.getdata:
+            with open('test.csv', 'w') as f:
+                writer = csv.writer(f)
+                for line in dataset[0][0]:
+                    writer.writerow(line)
+            quit()
 
-            E, size, vertex_coordinates, W = data_reader.create_distance_matrix(dataset[0][0], full_dm=True)
-            E, W = shift_edge_weights(E, gamma)
-            E, buckets = create_buckets(E, alpha, beta, W)
-            k = len(vertex_coordinates) - 1
-            adjacency_list = get_nearest_neighbours(E, k, buckets=True)
-        else:
-            adjacency_list = get_nearest_neighbours(dataset[0][0], k)
-
-        runs, graph, yhats = affinity_clustering(adjacency_list, vertex_coordinates=None, plot_intermediate=False)
+        runs, graph, yhats, contracted_leader = run(dataset[0][0], k, data_reader, beta=beta, alpha=alpha, gamma=gamma,
+                                 buckets=args.buckets)
         print('Graph size: ', len(graph), graph)
         print('Runs: ', runs)
         print('yhats: ', yhats[runs - 1])
 
         plotter.plot_yhats(yhats, dataset[0][0])
 
+
+def run(V, k, data_reader, beta=0.0, alpha=0.0, gamma=0.0, buckets=False):
+    if buckets:
+        E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
+        E, W = shift_edge_weights(E, gamma)
+        E, buckets, counter = create_buckets(E, alpha, beta, W)
+        k = len(vertex_coordinates) - 1
+        adjacency_list = get_nearest_neighbours(E, k, buckets=True)
+    else:
+        adjacency_list = get_nearest_neighbours(V, k)
+    return affinity_clustering(adjacency_list, vertex_coordinates=None, plot_intermediate=False)
 
 if __name__ == '__main__':
     # Initial call to main function

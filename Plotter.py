@@ -324,12 +324,38 @@ class Plotter:
         for x_c, y_c in vertex_coordinates:
             x.append(float(x_c))
             y.append(float(y_c))
-
         for yhat in yhats:
             plt.scatter(x, y, c=c, s=area)
             for i in range(n):
                 linex = [x[i], x[yhat[i]]]
                 liney = [y[i], y[yhat[i]]]
                 plt.plot(linex, liney, self.colors[i % len(self.colors)])
-
             plt.show()
+
+    def plot_cluster(self, yhat, final, vertex_coordinates):
+        clusters = set()
+        for v in yhat:
+            clusters.add(v)
+        color_ids = []
+        for item in clusters:
+            color_ids.append(item)
+        x = []
+        y = []
+        n = len(vertex_coordinates)
+        c = ['k'] * n
+        area = [0.1] * n
+        for x_c, y_c in vertex_coordinates:
+            x.append(float(x_c))
+            y.append(float(y_c))
+        plt.scatter(x, y, c=c, s=area)
+        for i in range(n):
+            cluster = yhat[i]
+            color = self.colors[0]
+            for j in range(len(color_ids)):
+                if cluster == color_ids[j]:
+                    color = self.colors[j]
+                    break
+            linex = [x[i], x[final[i]]]
+            liney = [y[i], y[final[i]]]
+            plt.plot(linex, liney, color)
+        plt.show()
