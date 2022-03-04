@@ -69,7 +69,7 @@ def map_contract_graph(_lambda, leader):
             S.append(v)
             c = min(c, v)
             v = _lambda[v]
-        # c = min(c, v)
+        c = min(c, v)
         A = list(filter(lambda e: leader[e[0]] != c, nu))
         return c, A
     return contraction
@@ -87,7 +87,6 @@ def reduce_contract_graph(leader):
             if new:
                 Nu.append((l, w))
         return Nu
-
     return reduce_contraction
 
 
@@ -108,11 +107,9 @@ def find_leader(_lambda):
         u, nu = adj
         c, v = u, u
         S = []
-        prev = 0
         cnt = 0
         while v not in S:
             S.append(v)
-            prev = v
             v = _lambda[v]
             cnt += 1
             c = min(c, v)
@@ -126,12 +123,14 @@ def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters
     sc = SparkContext.getOrCreate(conf=conf)
     clusters = [[i] for i in range(len(adj))]
     yhats = []
+    leaders = []
     graph = deepcopy(adj)
     rdd = sc.parallelize(adj)
 
     i = 0
-    imax = 20
+    imax = 40
     contracted_leader = [None] * len(adj)
+    mst = [None] * len(adj)
     while i < imax:
         if len(graph) <= num_clusters:
             break
@@ -149,6 +148,7 @@ def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters
         rdd1 = rdd.map(find_leader(_lambda)).collect()
         for line in rdd1:
             leader[line[0]] = line[1]
+        leaders.append(leader)
 
         for j in range(len(adj)):
             l = leader[j]
@@ -166,33 +166,40 @@ def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters
             if contracted_leader[j] is None:
                 if yhat[j] != j:
                     contracted_leader[j] = yhat[j]
+                    mst[j] = _lambda[j]
 
         # Contraction
         rdd = (rdd.map(map_contract_graph(_lambda=_lambda, leader=leader))
                .foldByKey([], reduce_contract_graph(leader)))
+        # rdd = rdd.map(map_contract_graph(_lambda=_lambda, leader=leader)).reduceByKey(reduce_contract_graph(leader))
+
         graph = rdd.collect()
+
         i += 1
 
     for j in range(len(adj)):
         if contracted_leader[j] is None:
             contracted_leader[j] = yhat[j]
+            mst[j] = yhat[j]
 
-    return i, graph, yhats, contracted_leader
+    return i, graph, yhats, contracted_leader, mst
 
 
 def get_nearest_neighbours(V, k=5, leaf_size=2, buckets=False):
     def get_sort_key(item):
         return item[1]
 
+    V_copy = deepcopy(V)
     if buckets:
         adj = []
         for key in V:
             nu = []
-            sorted_list = sorted(V[key].items(), key=get_sort_key)
+            sorted_list = sorted(V_copy[key].items(), key=get_sort_key)
             last = -1
             to_shuffle = []
             for i in range(k):
                 if last != sorted_list[i][1]:
+                    to_shuffle.append((sorted_list[i][0], sorted_list[i][1]))
                     random.shuffle(to_shuffle)
                     for item in to_shuffle:
                         nu.append(item)
@@ -205,17 +212,15 @@ def get_nearest_neighbours(V, k=5, leaf_size=2, buckets=False):
             for item in to_shuffle:
                 nu.append(item)
             adj.append((key, nu))
-
     else:
         kd_tree = KDTree(V, leaf_size=leaf_size)
         dist, ind = kd_tree.query(V, k=k + 1)
 
         adj = []
         for i in range(len(V)):
-            nu = []
-            for j in range(1, len(dist[i])):
-                nu.append((ind[i][j], dist[i][j]))
+            nu = [(ind[i, j], dist[i, j]) for j in range(1, len(dist[i]))]
             adj.append((i, nu))
+
     return adj
 
 
@@ -251,9 +256,27 @@ def shift_edge_weights(E, gamma=0.05):
     for key in E:
         for edge in E[key]:
             # TODO: fix shift (remove 100 *)
-            E[key][edge] = 100 * max(E[key][edge] + (np.random.uniform(-gamma, gamma)) * E[key][edge], 0)
-            max_weight = max(E[key][edge], max_weight)
+            if key < edge:
+                E[key][edge] = 100 * max(E[key][edge] + (np.random.uniform(-gamma, gamma)) * E[key][edge], 0)
+                max_weight = max(E[key][edge], max_weight)
+            else:
+                E[key][edge] = E[edge][key]
     return E, max_weight
+
+
+def find_differences(contracted_leader_list):
+    diff_matrix = []
+    for cl in contracted_leader_list:
+        diff = []
+        for cl2 in contracted_leader_list:
+            diff_count = 0
+            for i in range(len(cl2)):
+                if cl[i] != cl2[i]:
+                    diff_count += 1
+            diff.append(diff_count)
+        diff_matrix.append(diff)
+    return diff_matrix
+
 
 
 def main():
@@ -273,27 +296,28 @@ def main():
     start_time = datetime.now()
     print('Starting time:', start_time)
 
-    file_location = 'Results/test/'
+    file_location = 'Results_buckets/'
     plotter = Plotter(None, None, file_location)
 
     # Read data
     data_reader = DataReader()
     loc = 'datasets/sklearn/data_two_circles.csv'
-    #V, size, E = data_reader.read_data_set_from_txtfile(loc)
+    # V, size, E = data_reader.read_data_set_from_txtfile(loc)
     V, size = data_reader.read_vertex_list(loc)
+    # loc = 'datasets/housing.csv'
+    # V, size = data_reader.read_csv_columns(loc, ['Latitude', 'Longitude'])
     print('Read dataset: ', loc)
 
     # Parameters
-    beta = 0.5  # 0 <= beta <= 1 (buckets)
+    beta = 0.2  # 0 <= beta <= 1 (buckets)
     alpha = 0.1  # shift of buckets
     gamma = 0.05  # shift of edge weights
 
-    add_noise = True
+    add_noise = False
     if add_noise:
         dm = DataModifier()
         # V, size = dm.add_gaussian_noise(V)
-        V, size = dm.add_clustered_noise(V, 'vertical_line')
-
+        V, size = dm.add_clustered_noise(V, 'horizontal_line')
 
     if args.test:
         E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
@@ -306,38 +330,32 @@ def main():
             print('Counter: ', counter)
         quit()
 
-    runs, graph, yhats, contracted_leader = run(V, size - 1, data_reader, beta, alpha, gamma, buckets=args.buckets)
-    plotter.plot_cluster(yhats[runs - 1], contracted_leader, V)
-    # plotter.plot_yhats([contracted_leader], V)
-    print('Graph size: ', len(graph), graph)
-    print('Runs: ', runs)
-    print('yhats: ', yhats[runs - 1])
-    quit()
 
-    # runs1, graph1, yhats1, contracted_leader = run(V, 1499, data_reader, beta, alpha, gamma, buckets=args.buckets)
-    # print('Graph size: ', len(graph1), graph1)
-    # print('Runs: ', runs1)
-    # print('yhats: ', yhats1[runs1 - 1])
-    #
-    # print(runs, runs1)
-    # difference = []
-    # for i in range(min(runs1, runs)):
-    #     diff = 0
-    #     for j in range(len(yhats1[i])):
-    #         if yhats1[i][j] != yhats[i][j]:
-    #             diff += 1
-    #     difference.append(diff)
-    # print(difference)
-
-    # plotter.plot_yhats(yhats, V)
+    # runs, graph, yhats, contracted_leader, mst = run(V, len(V) - 1, data_reader, beta, alpha, gamma, buckets=args.buckets)
+    # print('Graph size: ', len(graph), graph)
+    # print('Runs: ', runs)
+    # print('yhats: ', yhats[runs - 1])
+    # plotter.plot_cluster(yhats[runs - 1], mst, V)
+    # quit()
 
     # Toy datasets
     datasets = get_clustering_data()
+    datasets = datasets[0:5]
     timestamp = datetime.now()
+    names_datasets = ['TwoCircles', 'TwoMoons', 'Varied', 'Aniso', 'Blobs', 'Random', 'swissroll', 'sshape']
+    cnt = 0
+    diff = []
     for dataset in datasets:
         if not args.datasets:
             continue
-        k = 1499
+
+        V = [item for item in dataset[0][0]]
+
+        if add_noise:
+            dm = DataModifier()
+            # V, size = dm.add_gaussian_noise(V)
+            V, size = dm.add_clustered_noise(V, 'circle')
+
         if args.getdata:
             with open('test.csv', 'w') as f:
                 writer = csv.writer(f)
@@ -345,21 +363,34 @@ def main():
                     writer.writerow(line)
             quit()
 
-        runs, graph, yhats, contracted_leader = run(dataset[0][0], k, data_reader, beta=beta, alpha=alpha, gamma=gamma,
-                                 buckets=args.buckets)
-        print('Graph size: ', len(graph), graph)
-        print('Runs: ', runs)
-        print('yhats: ', yhats[runs - 1])
+        plotter.set_dataset(names_datasets[cnt])
+        plotter.update_string()
+        plotter.reset_round()
+        runs_list, graph_list, yhats_list, contracted_leader_list, msts = [], [], [], [], []
+        for i in range(10):
+            runs, graph, yhats, contracted_leader, mst = run(V, len(V) - 1, data_reader, beta, alpha, gamma,
+                                                        buckets=args.buckets)
+            runs_list.append(runs)
+            graph_list.append(graph)
+            yhats_list.append(yhats),
+            contracted_leader_list.append(contracted_leader)
+            msts.append(mst)
+            # plotter.plot_cluster(yhats[runs - 1], mst, V)
+            # plotter.next_round()
+            print('Graph size: ', len(graph), graph)
+            print('Runs: ', runs)
+            # print('yhats: ', yhats[runs - 1])
+        diff.append(find_differences(msts))
+        cnt += 1
 
-        plotter.plot_yhats(yhats, dataset[0][0])
-
+    for item in diff:
+        print(item)
 
 def run(V, k, data_reader, beta=0.0, alpha=0.0, gamma=0.0, buckets=False):
     if buckets:
         E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
         E, W = shift_edge_weights(E, gamma)
-        E, buckets, counter = create_buckets(E, alpha, beta, W)
-        k = len(vertex_coordinates) - 1
+        # E, buckets, counter = create_buckets(E, alpha, beta, W)
         adjacency_list = get_nearest_neighbours(E, k, buckets=True)
     else:
         adjacency_list = get_nearest_neighbours(V, k)

@@ -353,9 +353,12 @@ class Plotter:
             color = self.colors[0]
             for j in range(len(color_ids)):
                 if cluster == color_ids[j]:
-                    color = self.colors[j]
+                    color = self.colors[j % len(self.colors)]
                     break
             linex = [x[i], x[final[i]]]
             liney = [y[i], y[final[i]]]
             plt.plot(linex, liney, color)
-        plt.show()
+        # plt.show()
+        filename = self.file_loc + self.name_dataset + str(self.round)
+        plt.savefig(filename, dpi='figure')
+        plt.clf()

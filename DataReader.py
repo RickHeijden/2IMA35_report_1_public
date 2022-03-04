@@ -3,6 +3,7 @@ import csv
 import random
 import numpy as np
 import scipy
+import pandas as pd
 
 
 def get_edge_weight(num_clusters=5, sigma=1, mu=None):
@@ -159,7 +160,6 @@ class DataReader:
                     dict2[j] = value
                     size += 1
                 dict[i] = dict2
-
         else:
             d_matrix = scipy.spatial.distance_matrix(vertices, vertices, threshold=1000000)
             dict = {}
@@ -190,3 +190,10 @@ class DataReader:
             for row in csv_reader:
                 vertices.append((float(row[0]), float(row[1])))
         return vertices, len(vertices)
+
+    def read_csv_columns(self, file_location, column_names):
+        df = pd.read_csv(file_location, usecols=column_names)
+        V = []
+        for index, line in df.iterrows():
+            V.append((float(line[0]), float(line[1])))
+        return V, len(V)
