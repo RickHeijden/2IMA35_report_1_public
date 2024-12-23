@@ -61,9 +61,15 @@ class Plotter:
         self.name_dataset = name_dataset
         self.file_loc = file_loc
         self.round = 0
-        self.colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k', 'darkorange', 'dodgerblue', 'deeppink', 'khaki', 'purple',
-                       'springgreen', 'tomato', 'slategray', 'forestgreen', 'mistyrose', 'mediumorchid',
-                       'rebeccapurple', 'lavender', 'cornflowerblue', 'lightseagreen', 'brown']
+        self.colors = ['b', 'r', 'g', 'c', 'm', 'y', 'k', 'darkorange', 'dodgerblue', 'deeppink', 
+                        'khaki', 'purple', 'springgreen', 'tomato', 'slategray', 'forestgreen', 
+                        'mistyrose', 'mediumorchid', 'rebeccapurple', 'lavender', 'cornflowerblue', 
+                        'lightseagreen', 'brown', 'gold', 'darkgreen', 'hotpink', 'turquoise', 
+                        'indigo', 'crimson', 'lime', 'plum', 'navy', 'orchid', 'peachpuff', 
+                        'seagreen', 'chocolate', 'aquamarine', 'salmon', 'maroon', 'teal', 
+                        'azure', 'violet', 'fuchsia', 'beige', 'steelblue', 'rosybrown', 
+                        'sienna', 'olive', 'cyan', 'palegoldenrod', 'mediumvioletred']
+
         self.machine_string = "{}_round_{}_machine_".format(self.name_dataset, self.round)
 
     def update_string(self):
@@ -358,7 +364,7 @@ class Plotter:
             linex = [x[i], x[final[i]]]
             liney = [y[i], y[final[i]]]
             plt.plot(linex, liney, color)
-        # plt.show()
+        #plt.show()
         filename = self.file_loc + self.name_dataset + str(self.round)
         plt.savefig(filename, dpi='figure')
         plt.clf()

@@ -10,6 +10,9 @@ from Plotter import *
 from DataReader import *
 from DataModifier import *
 
+import os
+os.environ['PYSPARK_PYTHON'] = ".venv/Scripts/python.exe"
+
 
 def get_clustering_data():
     """
@@ -119,7 +122,7 @@ def find_leader(_lambda):
 
 
 def affinity_clustering(adj, vertex_coordinates, plot_intermediate, num_clusters=3):
-    conf = SparkConf().setAppName('MST_Algorithm')
+    conf = SparkConf().setAppName('MST_Algorithm').setMaster('local[*]')
     sc = SparkContext.getOrCreate(conf=conf)
     clusters = [[i] for i in range(len(adj))]
     yhats = []
@@ -296,65 +299,27 @@ def main():
     start_time = datetime.now()
     print('Starting time:', start_time)
 
-    file_location = 'Results_buckets/'
-    plotter = Plotter(None, None, file_location)
-
-    # Read data
+    file_location = 'MSTforDenseGraphs/Results_buckets/affinity_algorithm'
     data_reader = DataReader()
-    loc = 'datasets/sklearn/data_two_circles.csv'
-    # V, size, E = data_reader.read_data_set_from_txtfile(loc)
-    V, size = data_reader.read_vertex_list(loc)
-    # loc = 'datasets/housing.csv'
-    # V, size = data_reader.read_csv_columns(loc, ['Latitude', 'Longitude'])
-    print('Read dataset: ', loc)
 
     # Parameters
     beta = 0.2  # 0 <= beta <= 1 (buckets)
     alpha = 0.1  # shift of buckets
     gamma = 0.05  # shift of edge weights
 
-    add_noise = False
-    if add_noise:
-        dm = DataModifier()
-        # V, size = dm.add_gaussian_noise(V)
-        V, size = dm.add_clustered_noise(V, 'horizontal_line')
+    names_datasets = ['2d-20c-no0', '2sp2glob', '3-spiral', 'cluto-t7-10k', 'cluto-t8-8k', 'complex8', 'complex9', 'D31',
+                      'spiralsquare', 'square1', 'twenty', 'fourty']
+    datasets = [pd.read_csv(f'datasets/{name}.csv', header=None).to_numpy() for name in names_datasets]
 
-    if args.test:
-        E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
-        for i in range(10):
-            E_copy = deepcopy(E)
-            E_changed, W = shift_edge_weights(E_copy, gamma)
-            E_changed, buckets, counter = create_buckets(E_changed, alpha, beta, W)
-            print('Run', i)
-            print('Buckets: ', buckets)
-            print('Counter: ', counter)
-        quit()
+    num_clusters = [20, 4, 3, 9, 10, 8, 9, 31, 6, 4, 20, 40]
 
-
-    # runs, graph, yhats, contracted_leader, mst = run(V, len(V) - 1, data_reader, beta, alpha, gamma, buckets=args.buckets)
-    # print('Graph size: ', len(graph), graph)
-    # print('Runs: ', runs)
-    # print('yhats: ', yhats[runs - 1])
-    # plotter.plot_cluster(yhats[runs - 1], mst, V)
-    # quit()
-
-    # Toy datasets
-    datasets = get_clustering_data()
-    datasets = datasets[0:5]
-    timestamp = datetime.now()
-    names_datasets = ['TwoCircles', 'TwoMoons', 'Varied', 'Aniso', 'Blobs', 'Random', 'swissroll', 'sshape']
     cnt = 0
     diff = []
     for dataset in datasets:
-        if not args.datasets:
-            continue
+        plotter = Plotter(None, names_datasets[cnt], file_location)
+        print('Read dataset: ', names_datasets[cnt])
 
-        V = [item for item in dataset[0][0]]
-
-        if add_noise:
-            dm = DataModifier()
-            # V, size = dm.add_gaussian_noise(V)
-            V, size = dm.add_clustered_noise(V, 'circle')
+        V = [item for item in dataset]
 
         if args.getdata:
             with open('test.csv', 'w') as f:
@@ -369,24 +334,24 @@ def main():
         runs_list, graph_list, yhats_list, contracted_leader_list, msts = [], [], [], [], []
         for i in range(10):
             runs, graph, yhats, contracted_leader, mst = run(V, len(V) - 1, data_reader, beta, alpha, gamma,
-                                                        buckets=args.buckets)
+                                                             buckets=args.buckets, num_clusters=num_clusters[cnt])
             runs_list.append(runs)
             graph_list.append(graph)
             yhats_list.append(yhats),
             contracted_leader_list.append(contracted_leader)
             msts.append(mst)
-            # plotter.plot_cluster(yhats[runs - 1], mst, V)
-            # plotter.next_round()
+            plotter.plot_cluster(yhats[runs - 1], mst, V)
+            plotter.next_round()
             print('Graph size: ', len(graph), graph)
             print('Runs: ', runs)
-            # print('yhats: ', yhats[runs - 1])
+            print('yhats: ', yhats[runs - 1])
         diff.append(find_differences(msts))
         cnt += 1
 
     for item in diff:
         print(item)
 
-def run(V, k, data_reader, beta=0.0, alpha=0.0, gamma=0.0, buckets=False):
+def run(V, k, data_reader, beta=0.0, alpha=0.0, gamma=0.0, buckets=False, num_clusters=3):
     if buckets:
         E, size, vertex_coordinates, W = data_reader.create_distance_matrix(V, full_dm=True)
         E, W = shift_edge_weights(E, gamma)
@@ -394,7 +359,7 @@ def run(V, k, data_reader, beta=0.0, alpha=0.0, gamma=0.0, buckets=False):
         adjacency_list = get_nearest_neighbours(E, k, buckets=True)
     else:
         adjacency_list = get_nearest_neighbours(V, k)
-    return affinity_clustering(adjacency_list, vertex_coordinates=None, plot_intermediate=False)
+    return affinity_clustering(adjacency_list, vertex_coordinates=None, plot_intermediate=True,num_clusters=num_clusters)
 
 if __name__ == '__main__':
     # Initial call to main function
